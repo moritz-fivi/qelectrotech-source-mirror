@@ -887,10 +887,13 @@ QString QETApp::configDir()
 #ifdef QET_ALLOW_OVERRIDE_CD_OPTION
 	if (config_dir != QString()) return(config_dir);
 #endif
-	QString configdir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
-	while (configdir.endsWith('/')) {
-		configdir.remove(configdir.length()-1, 1);
-	}
+	// C++11 static-local init runs exactly once across all threads — safe to
+	// call from QtConcurrent background threads (QStandardPaths is not).
+	static const QString configdir = []() {
+		QString d = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+		while (d.endsWith('/')) d.chop(1);
+		return d;
+	}();
 	return configdir;
 }
 
@@ -911,10 +914,13 @@ QString QETApp::dataDir()
 #ifdef QET_ALLOW_OVERRIDE_DD_OPTION
 	if (data_dir != QString()) return(data_dir);
 #endif
-	QString datadir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-	while (datadir.endsWith('/')) {
-		datadir.remove(datadir.length()-1, 1);
-	}
+	// C++11 static-local init runs exactly once across all threads — safe to
+	// call from QtConcurrent background threads (QStandardPaths is not).
+	static const QString datadir = []() {
+		QString d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+		while (d.endsWith('/')) d.chop(1);
+		return d;
+	}();
 	return datadir;
 }
 
@@ -1987,7 +1993,10 @@ void QETApp::configureQET()
 	// cree le dialogue
 	ConfigDialog cd;
 	cd.setWindowTitle(tr("Configurer QElectroTech", "window title"));
-	cd.setWindowModality(Qt::WindowModal);
+	// ApplicationModal so no other window can dispatch events while the dialog
+	// holds raw pointers derived from the current project list.  Same class of
+	// bug as ProjectPropertiesDialog — see issue #527.
+	cd.setWindowModality(Qt::ApplicationModal);
 	cd.addPage(new GeneralConfigurationPage());
 	cd.addPage(new NewDiagramPage());
 	cd.addPage(new ExportConfigPage());
@@ -2619,14 +2628,17 @@ void QETApp::fetchWindowStats(
 #ifdef Q_OS_DARWIN
 /**
 	Gere les evenements, en particulier l'evenement FileOpen sous MacOs.
+	Installe comme event filter sur QApplication dans main(), une fois
+	QETApp construite (voir main.cpp).
+	@param object Objet cible de l'evenement
 	@param e Evenement a gerer
 */
-bool QETApp::eventFiltrer(QObject *object, QEvent *e) {
+bool QETApp::eventFilter(QObject *object, QEvent *e) {
 	// gere l'ouverture de fichiers (sous MacOs)
 	if (e -> type() == QEvent::FileOpen) {
 	// nom du fichier a ouvrir
 	QString filename = static_cast<QFileOpenEvent *>(e) -> file();
-	openFiles(QStringList() << filename);
+	openFiles(QETArguments(QStringList() << filename));
 	return(true);
 	} else {
 	return QObject::eventFilter(object, e);
