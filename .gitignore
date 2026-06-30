@@ -7,3 +7,7 @@ doc/*
 !doc/QElectroTech.qch
 QElectroTech.tag
 !doc/doc-utils
+#build output
+build/*
+nsis_root/*
+dist/*
